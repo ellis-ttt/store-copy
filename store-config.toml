@@ -1,0 +1,8 @@
+src = "test-store"
+dst = "@test-store"
+disallowed_dirs = [
+    "target", "node_modules"
+]
+exclusion_markers = [
+    "store-exclude"
+]

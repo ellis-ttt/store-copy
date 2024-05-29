@@ -1,0 +1,10 @@
+[target.x86_64-pc-windows-msvc]
+linker = "rust-lld.exe" # Use LLD Linker
+rustflags = [
+    #"-Zlocation-detail=none", # (Nightly) Remove Location Details
+    "-Zshare-generics=n", # (Nightly)
+    "-Zthreads=0", # (Nightly) Use improved multithreading with the recommended amount of threads.
+]
+
+[profile.dev]
+debug = 1
