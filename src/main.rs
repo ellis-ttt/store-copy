@@ -2,6 +2,7 @@
 
 use std::{
     env::current_exe,
+    fmt::Debug,
     fs::{
         copy,
         create_dir_all,
@@ -9,43 +10,14 @@ use std::{
         read_to_string,
         File,
     },
-    io::{
-        BufReader,
-        Read,
-    },
+    io::Write,
+    os::windows::fs::symlink_file,
     path::{
         Path,
         PathBuf,
     },
 };
 use toml::from_str;
-
-fn is_same_file(src: &Path, target: &Path) -> Result<bool, std::io::Error> {
-    if !target.exists() {
-        return Ok(false);
-    }
-
-    let src_content = File::open(src)?;
-    let target_content = File::open(target)?;
-
-    if src_content.metadata()?.len() != target_content.metadata()?.len() {
-        return Ok(false);
-    }
-
-    let src_content = BufReader::new(src_content);
-    let target_content = BufReader::new(target_content);
-
-    for (src_byte, target_byte) in src_content
-        .bytes()
-        .zip(target_content.bytes())
-    {
-        if src_byte? != target_byte? {
-            return Ok(false);
-        }
-    }
-
-    Ok(true)
-}
 
 fn read(config: &Config, dir: &PathBuf) -> std::io::Result<()> {
     let mut entries: Vec<PathBuf> = vec![];
@@ -93,16 +65,33 @@ fn read(config: &Config, dir: &PathBuf) -> std::io::Result<()> {
             .join(Path::new(&config.dst))
             .join(common_path);
 
-        if is_same_file(
-            path.as_path(),
-            new_path.as_path(),
-        )? {
-            continue
-        }
-
         create_dir_all(new_path.parent().unwrap())?;
-        copy(path, new_path)?;
+        match symlink_file(&path, &new_path) {
+            Ok(_) => continue,
+            Err(err) => log_err("Couldn't symlink", &new_path, err)?,
+        };
+
+        match copy(&path, &new_path) {
+            Ok(_) => continue,
+            Err(err) => log_err("Couldn't copy", &new_path, err)?,
+        };
     }
+    Ok(())
+}
+
+fn log_err<E>(str: &str, path: &Path, err: E) -> std::io::Result<()>
+where
+    E: Debug,
+{
+    let mut file = File::create("store.log")?;
+    let logstr = format!(
+        "\n{:?}\n{} {}\n{:?}\n",
+        chrono::offset::Local::now(),
+        str,
+        path.display(),
+        err
+    );
+    file.write_all(logstr.as_bytes())?;
     Ok(())
 }
 
@@ -116,10 +105,8 @@ struct Config {
 
 fn main() -> std::io::Result<()> {
     if let Ok(exe_path) = current_exe() {
-        let config: Config = from_str(&read_to_string(
-            "./store-config.toml",
-        )?)
-        .unwrap();
+        let config: Config =
+            from_str(&read_to_string("./store-config.toml")?).unwrap();
         read(
             &config,
             &exe_path
